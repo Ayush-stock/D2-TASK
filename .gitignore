@@ -37,3 +37,13 @@ Desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+
+
+# Firebase credentials
+**/serviceAccountKey.json
+firebase-adminsdk*.json
+
+# C# build output
+**/bin/
+**/obj/

@@ -1,16 +1,7 @@
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-    createUserWithEmailAndPassword,
-    updateProfile
-} from "firebase/auth";
-import {
-    doc,
-    setDoc,
-    serverTimestamp
-} from "firebase/firestore";
-import { auth, db } from "../firebase/firebaseConfig";
+import { useAuth } from "../AuthContext";
 
 function Signup() {
     const [name, setName] = useState("");
@@ -19,56 +10,54 @@ function Signup() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
+    const { login } = useAuth();
     const navigate = useNavigate();
 
-    async function handleSignup(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
 
         setError("");
         setLoading(true);
 
-        let result = null;
-
         try {
-            // Create the Firebase Authentication account
-            result = await createUserWithEmailAndPassword(
-                auth,
-                email.trim(),
-                password
-            );
-
-            // Set the user's display name
-            await updateProfile(result.user, {
-                displayName: name.trim()
+            const response = await fetch("/api/register", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    name,
+                    email,
+                    password
+                })
             });
 
-            // Save profile information in Firestore
-            await setDoc(doc(db, "users", result.user.uid), {
-                name: name.trim(),
-                email: email.trim(),
-                createdAt: serverTimestamp()
-            });
+            const responseText = await response.text();
+            let data = {};
 
-            // Go to the homepage after successful registration
-            navigate("/");
-        } catch (err) {
-            console.error("Signup error:", err.code, err.message);
-
-            if (result) {
-                setError(
-                    "Your authentication account was created, but profile setup failed. Check the browser console and Firestore rules."
-                );
-            } else if (err.code === "auth/email-already-in-use") {
-                setError("This email is already registered. Please log in.");
-            } else if (err.code === "auth/weak-password") {
-                setError("Please choose a stronger password.");
-            } else if (err.code === "auth/invalid-email") {
-                setError("Please enter a valid email address.");
-            } else if (err.code === "auth/operation-not-allowed") {
-                setError("Email and password sign-up is not enabled in Firebase.");
-            } else {
-                setError("Registration failed. Please try again.");
+            try {
+                data = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                throw new Error("Server returned an invalid response.");
             }
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Unable to create your account."
+                );
+            }
+
+            if (!data.token || !data.user) {
+                throw new Error("Registration response is incomplete.");
+            }
+
+            login(data.token, data.user);
+            navigate("/");
+
+        } catch (err) {
+            setError(
+                err.message || "Registration failed. Please try again."
+            );
         } finally {
             setLoading(false);
         }
@@ -76,55 +65,75 @@ function Signup() {
 
     return (
         <main className="auth-page">
-            <h1>Create an Account</h1>
-            <p>Join the DEV@Deakin community.</p>
+            <form className="auth-form" onSubmit={handleSubmit}>
+                <h1>Create Account</h1>
 
-            <form onSubmit={handleSignup}>
-                <label htmlFor="signup-name">Full Name</label>
-                <input
-                    id="signup-name"
-                    type="text"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    autoComplete="name"
-                    required
-                />
-
-                <label htmlFor="signup-email">Email</label>
-                <input
-                    id="signup-email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    autoComplete="email"
-                    required
-                />
-
-                <label htmlFor="signup-password">Password</label>
-                <input
-                    id="signup-password"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete="new-password"
-                    minLength={6}
-                    required
-                />
+                <p className="auth-subtitle">
+                    Join DEV@Deakin and get started.
+                </p>
 
                 {error && (
-                    <p className="auth-error" role="alert">
+                    <div className="auth-error" role="alert">
                         {error}
-                    </p>
+                    </div>
                 )}
 
-                <button type="submit" disabled={loading}>
-                    {loading ? "Creating account..." : "Sign Up"}
-                </button>
-            </form>
+                <div className="auth-field">
+                    <label htmlFor="signup-name">Full Name</label>
+                    <input
+                        id="signup-name"
+                        type="text"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        placeholder="Enter your full name"
+                        autoComplete="name"
+                        required
+                    />
+                </div>
 
-            <p>
-                Already registered? <Link to="/login">Login</Link>
-            </p>
+                <div className="auth-field">
+                    <label htmlFor="signup-email">Email Address</label>
+                    <input
+                        id="signup-email"
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="Enter your email"
+                        autoComplete="email"
+                        required
+                    />
+                </div>
+
+                <div className="auth-field">
+                    <label htmlFor="signup-password">Password</label>
+                    <input
+                        id="signup-password"
+                        type="password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="At least 8 characters"
+                        autoComplete="new-password"
+                        minLength={8}
+                        required
+                    />
+                </div>
+
+                <button
+                    className="auth-submit"
+                    type="submit"
+                    disabled={loading}
+                >
+                    {loading ? "Creating account..." : "Create Account"}
+                </button>
+
+                <p className="auth-switch">
+                    Already have an account? <Link to="/login">Login here</Link>
+                </p>
+
+                <Link to="/" className="auth-home-link">
+                    Back to Home
+                </Link>
+            </form>
         </main>
     );
 }

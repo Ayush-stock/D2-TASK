@@ -1,292 +1,315 @@
+
 import { useState } from "react";
+import { useAuth } from "../AuthContext";
 
 function Post() {
-    const [postType, setPostType] = useState("Article");
+    const { user } = useAuth();
 
-    const [formData, setFormData] = useState({
-        title: "",
-        description: "",
-        abstract: "",
-        articleText: "",
-        tags: ""
-    });
+    const [postType, setPostType] = useState("Question");
+    const [postPlan, setPostPlan] = useState(
+        user?.plan === "Paid" ? "Paid" : "Free"
+    );
 
-    const [message, setMessage] = useState("");
+    const [title, setTitle] = useState("");
+    const [description, setDescription] = useState("");
+    const [abstract, setAbstract] = useState("");
+    const [articleText, setArticleText] = useState("");
+    const [tags, setTags] = useState("");
 
-    function handleChange(event) {
-        const { name, value } = event.target;
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+    const [loading, setLoading] = useState(false);
 
-        setFormData({
-            ...formData,
-            [name]: value
-        });
-
-        setMessage("");
-    }
-
-    function handleSubmit(event) {
+    async function handleSubmit(event) {
         event.preventDefault();
 
-        const title = formData.title.trim();
-        const description = formData.description.trim();
-        const abstract = formData.abstract.trim();
-        const articleText = formData.articleText.trim();
+        setError("");
+        setSuccess("");
 
-        const tags = formData.tags
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter((tag) => tag.length > 0);
+        const token = localStorage.getItem("token");
 
-        let error = "";
-
-        // Check the title.
-        if (title === "") {
-            error = "Please enter a title.";
-        }
-
-        // Validate the Question form.
-        else if (
-            postType === "Question" &&
-            description === ""
-        ) {
-            error = "Please describe your problem.";
-        }
-
-        // Validate the Article form.
-        else if (
-            postType === "Article" &&
-            abstract === ""
-        ) {
-            error = "Please enter an abstract.";
-        }
-
-        else if (
-            postType === "Article" &&
-            articleText === ""
-        ) {
-            error = "Please enter the article text.";
-        }
-
-        // A maximum of three comma-separated tags is allowed.
-       else if (tags.length === 0) {
-    error = "Please enter at least one tag.";
-}
-
-else if (tags.length > 3) {
-    error = "Please enter no more than 3 tags.";
-}
-
-        // Display an error if validation fails.
-        if (error !== "") {
-            setMessage(error);
-            window.alert(error);
+        if (!token) {
+            setError("Please login before creating a post.");
             return;
         }
 
-        // Prepare the information for future post storage.
+        if (!title.trim()) {
+            setError("Please enter a title.");
+            return;
+        }
+
+        const tagList = tags
+            .split(",")
+            .map(tag => tag.trim())
+            .filter(tag => tag !== "");
+
+        if (tagList.length < 1 || tagList.length > 3) {
+            setError("Enter between 1 and 3 tags.");
+            return;
+        }
+
+        if (tagList.some(tag => tag.length > 30)) {
+            setError("Each tag must be 30 characters or less.");
+            return;
+        }
+
+        if (postType === "Question" && !description.trim()) {
+            setError("Please enter your question description.");
+            return;
+        }
+
+        if (postType === "Article" &&
+            (!abstract.trim() || !articleText.trim())) {
+            setError("Please enter the article abstract and text.");
+            return;
+        }
+
         const postData = {
             type: postType,
-            title: title,
-            tags: tags
+            title: title.trim(),
+            tags: tagList,
+            plan: postPlan
         };
 
         if (postType === "Question") {
-            postData.description = description;
+            postData.description = description.trim();
         } else {
-            postData.abstract = abstract;
-            postData.articleText = articleText;
+            postData.abstract = abstract.trim();
+            postData.articleText = articleText.trim();
         }
 
+        try {
+            setLoading(true);
 
-        console.log("Validated post:", postData);
+            const response = await fetch("/api/posts", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(postData)
+            });
 
-        const successMessage =
-            "Your " +
-            postType.toLowerCase() +
-            " has been submitted successfully!";
+            const responseText = await response.text();
+            let data = {};
 
-        setMessage(successMessage);
-        window.alert(successMessage);
+            try {
+                data = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                throw new Error("Server returned an invalid response.");
+            }
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Unable to create post."
+                );
+            }
+
+            setSuccess("Your post has been created successfully!");
+
+            setTitle("");
+            setDescription("");
+            setAbstract("");
+            setArticleText("");
+            setTags("");
+            setPostType("Question");
+            setPostPlan(user?.plan === "Paid" ? "Paid" : "Free");
+
+        } catch (err) {
+            setError(err.message || "Failed to submit post.");
+        } finally {
+            setLoading(false);
+        }
     }
 
     return (
         <main className="post-page">
-            <section className="post-container">
+            <div className="post-container">
 
-                <h2 className="post-heading">
-                    New Post
-                </h2>
+                <h1>Create a Post</h1>
 
-                <form onSubmit={handleSubmit} noValidate>
+                <form onSubmit={handleSubmit}>
 
-                    {/* Select the post type */}
-                    <div className="post-type">
-                        <span>Select Post Type:</span>
+                    {/* Select Post Type */}
+                    <div className="post-field radio-section">
+                        <strong>Select Post Type:</strong>
 
-                        <label>
-                            <input
-                                type="radio"
-                                name="postType"
-                                value="Question"
-                                checked={postType === "Question"}
-                                onChange={() => {
-                                    setPostType("Question");
-                                    setMessage("");
-                                }}
-                            />
-                            Question
-                        </label>
+                        <div className="radio-options">
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="postType"
+                                    value="Question"
+                                    checked={postType === "Question"}
+                                    onChange={() => setPostType("Question")}
+                                />
+                                Question
+                            </label>
 
-                        <label>
-                            <input
-                                type="radio"
-                                name="postType"
-                                value="Article"
-                                checked={postType === "Article"}
-                                onChange={() => {
-                                    setPostType("Article");
-                                    setMessage("");
-                                }}
-                            />
-                            Article
-                        </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="postType"
+                                    value="Article"
+                                    checked={postType === "Article"}
+                                    onChange={() => setPostType("Article")}
+                                />
+                                Article
+                            </label>
+                        </div>
                     </div>
 
-                    {/* Form heading */}
-                    <h3 className="post-section-heading">
+                    {/* Select Post Plan */}
+                    <div className="post-field radio-section">
+                        <strong>Select Post Plan:</strong>
+
+                        <div className="radio-options">
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="postPlan"
+                                    value="Free"
+                                    checked={postPlan === "Free"}
+                                    onChange={() => setPostPlan("Free")}
+                                />
+                                Free
+                            </label>
+
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="postPlan"
+                                    value="Paid"
+                                    checked={postPlan === "Paid"}
+                                    disabled={user?.plan !== "Paid"}
+                                    onChange={() => setPostPlan("Paid")}
+                                />
+                                Paid
+                            </label>
+                        </div>
+                    </div>
+
+                    <h2 className="post-section-heading">
                         What do you want to ask or share
-                    </h3>
+                    </h2>
 
                     <p className="post-instructions">
-                        This section changes depending on the
-                        type of post you select.
-                        <span>
-                            {" "}For a {postType.toLowerCase()},
-                            the relevant fields will appear below.
-                        </span>
+                        This section is designed based on the type of post.
+                        Enter the required information below.
                     </p>
 
-                    {/* Common title field */}
+                    {/* Title */}
                     <div className="post-field">
-                        <label htmlFor="title" className="bold-label">
-                            Title
-                        </label>
+                        <label htmlFor="post-title">Title</label>
 
                         <input
-                            id="title"
-                            name="title"
+                            id="post-title"
                             type="text"
-                            value={formData.title}
-                            onChange={handleChange}
-                            placeholder={
-                                postType === "Question"
-                                    ? "Start your question with how, what, why, etc."
-                                    : "Enter a descriptive title"
-                            }
+                            value={title}
+                            onChange={e => setTitle(e.target.value)}
+                            placeholder="Enter your title"
                             maxLength={150}
                             required
                         />
                     </div>
 
-                    {/* Question-specific fields */}
+                    {/* Question Description */}
                     {postType === "Question" && (
                         <div className="post-field">
-                            <label htmlFor="description">
-                                Describe your problem
+                            <label htmlFor="post-description">
+                                Question Description
                             </label>
 
                             <textarea
-                                id="description"
-                                name="description"
-                                value={formData.description}
-                                onChange={handleChange}
-                                rows={10}
+                                id="post-description"
+                                value={description}
+                                onChange={e => setDescription(e.target.value)}
+                                placeholder="Write your question here"
+                                maxLength={10000}
                                 required
                             />
                         </div>
                     )}
 
-                    {/* Article-specific fields */}
+                    {/* Article Details */}
                     {postType === "Article" && (
                         <>
                             <div className="post-field">
-                                <label htmlFor="abstract">
+                                <label htmlFor="post-abstract">
                                     Abstract
                                 </label>
 
                                 <textarea
-                                    id="abstract"
-                                    name="abstract"
-                                    value={formData.abstract}
-                                    onChange={handleChange}
-                                    placeholder="Enter a 1-paragraph abstract"
-                                    rows={3}
+                                    id="post-abstract"
+                                    value={abstract}
+                                    onChange={e => setAbstract(e.target.value)}
+                                    placeholder="Enter article abstract"
+                                    maxLength={2000}
                                     required
                                 />
                             </div>
 
                             <div className="post-field">
-                                <label htmlFor="articleText">
+                                <label htmlFor="post-article">
                                     Article Text
                                 </label>
 
                                 <textarea
-                                    id="articleText"
-                                    name="articleText"
-                                    value={formData.articleText}
-                                    onChange={handleChange}
-                                    placeholder="Enter your article text"
-                                    rows={7}
+                                    id="post-article"
+                                    value={articleText}
+                                    onChange={e => setArticleText(e.target.value)}
+                                    placeholder="Write your article here"
+                                    maxLength={50000}
                                     required
                                 />
                             </div>
                         </>
                     )}
 
-                    {/* Tags field for both post types */}
-                    <div className="post-field post-tags">
-                        <label htmlFor="tags">
-                            Tags
-                        </label>
+                    {/* Tags */}
+                    <div className="post-field">
+                        <label htmlFor="post-tags">Tags</label>
 
                         <input
-                            id="tags"
-                            name="tags"
+                            id="post-tags"
                             type="text"
-                            value={formData.tags}
-                            onChange={handleChange}
-                            placeholder={
-                                "Add up to 3 tags, separated by commas, e.g., Java"
-                            }
+                            value={tags}
+                            onChange={e => setTags(e.target.value)}
+                            placeholder="LIFE, THOUGHT, SCENE"
+                            required
                         />
+
+                        <small>
+                            Enter 1 to 3 tags separated by commas.
+                        </small>
                     </div>
 
-                    {/* Validation and submission feedback */}
-                    {message && (
-                        <p
-                            className={
-                                message.includes("successfully")
-                                    ? "post-success"
-                                    : "post-error"
-                            }
-                            role="status"
-                        >
-                            {message}
-                        </p>
+                    {/* Error and Success Messages */}
+                    {error && (
+                        <div className="post-error" role="alert">
+                            {error}
+                        </div>
                     )}
 
-                    {/* Submit button */}
+                    {success && (
+                        <div className="post-success" role="status">
+                            {success}
+                        </div>
+                    )}
+
+                    {/* Submit Button */}
                     <div className="post-button-container">
                         <button
                             type="submit"
                             className="post-submit-button"
+                            disabled={loading}
                         >
-                            Post
+                            {loading ? "Submitting..." : "Submit"}
                         </button>
                     </div>
 
                 </form>
-            </section>
+            </div>
         </main>
     );
 }
